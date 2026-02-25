@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import chalk from "chalk";
 import { execFileSync, execSync } from "child_process";
