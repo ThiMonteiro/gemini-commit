@@ -77,7 +77,7 @@ gcommit
 
 ### Exemplo de Fluxo
 
-\`\`\`
+```text
 🚀 Analisando alterações em [seu-projeto]...
 🤖 Consultando o Gemini para gerar a mensagem de commit...
 
@@ -89,7 +89,7 @@ gcommit
 --------------------------
 
 ? Deseja realizar o commit com esta mensagem? › (Y/n)
-\`\`\`
+```
 
 Basta digitar `Y` e apertar Enter e o commit será finalizado com sucesso no seu histórico Git!
 
