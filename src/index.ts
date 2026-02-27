@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 import chalk from "chalk";
-import prompts from "prompts";
 import "dotenv/config";
-import { Git } from "./utils/git.js";
+import prompts from "prompts";
 import { getCommitSuggestion } from "./services/gemini.js";
+import { Git } from "./utils/git.js";
 
-async function main() { 
+async function main() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-        console.error(chalk.red("❌ GEMINI_API_KEY não configurada."));        
+        console.error(chalk.red("❌ GEMINI_API_KEY não configurada."));
         process.exit(1);
     }
 
@@ -49,7 +49,7 @@ async function main() {
             Git.commit(currentMessage);
             console.log(chalk.green("✅ Feito!"));
             isDone = true;
-        } 
+        }
         else if (action === 'edit') {
             const { edited } = await prompts({
                 type: 'text',
@@ -62,16 +62,16 @@ async function main() {
                 console.log(chalk.green("✅ Feito!"));
                 isDone = true;
             }
-        } 
+        }
         else if (action === 'regenerate') {
-            currentMessage = ""; 
-        } 
+            currentMessage = "";
+        }
         else {
             console.log(chalk.yellow("Tchau!"));
             isDone = true;
         }
     }
-    
+
 }
 
 main();
