@@ -2,11 +2,15 @@
 import chalk from "chalk";
 import "dotenv/config";
 import prompts from "prompts";
+import { env } from "./env.js";
 import { getCommitSuggestion } from "./services/gemini.js";
 import { Git } from "./utils/git.js";
 
 async function main() {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = env.GEMINI_API_KEY;
+    console.log(chalk.blue("🔍 Verificando ambiente..."))
+    console.log(chalk.blue(`🔑 API Key: ${apiKey ? "Configurada" : "Não configurada"}`));
+    
     if (!apiKey) {
         console.error(chalk.red("❌ GEMINI_API_KEY não configurada."));
         process.exit(1);
