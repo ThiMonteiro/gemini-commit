@@ -18,9 +18,20 @@ O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Int
 ## 🛠️ Como Instalar e Configurar
 
 ### 1. Pré-requisitos
+
 - [Node.js](https://nodejs.org/) (versão 18+ recomendada)
 - Git instalado e configurado na sua máquina
 - Uma Chave de API do Google Gemini. Adquira a sua gratuitamente no [Google AI Studio](https://aistudio.google.com/).
+- [t3env](https://www.npmjs.com/package/t3env) instalado globalmente para validação de variáveis de ambiente (opcional, mas recomendado)
+
+> **Nota:** O `gemini-commit` utiliza o pacote [t3env](https://www.npmjs.com/package/t3env) para validar a existência e formato da variável de ambiente `GEMINI_API_KEY`. Caso não esteja presente ou inválida, o CLI exibirá um erro amigável e instruções para correção.
+
+Para instalar o t3env globalmente:
+```bash
+npm install -g t3env
+```
+
+Se preferir, o pacote será instalado automaticamente como dependência do projeto, mas o uso global permite validar variáveis em outros projetos também.
 
 ### 2. Configurando a Chave de API
 
