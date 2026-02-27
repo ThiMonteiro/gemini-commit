@@ -57,6 +57,23 @@ npm link
 
 ---
 
+## 🏗️ Estrutura do Projeto
+
+Para garantir um código limpo, testável e manutenível, o `gemini-commit` foi modularizado da seguinte forma:
+
+```
+src/
+├── index.ts           # Ponto de entrada (CLI controller e fluxos de I/O)
+├── constants/
+│   └── prompt.ts      # Regras de sistema rígidas da IA (System Instructions)
+├── services/
+│   └── gemini.ts      # Serviço isolado de comunicação com a API do Google Generative AI
+└── utils/
+    └── git.ts         # Utilitários de execução e extração de dados do Git Local
+```
+
+---
+
 ## 🚀 Como Usar
 
 O uso do `gemini-commit` é incrivelmente simples.
