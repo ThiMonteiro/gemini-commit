@@ -1,6 +1,17 @@
+import chalk from "chalk";
 import { execFileSync } from "child_process";
 
 export const Git = {
+
+    getCurrentBranch(): string {
+        try {
+            const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"]).toString().trim();
+            return branch;
+        } catch {
+            return "main";
+        }
+    },
+
     getStagedDiff(): string | null {
         try {
             const diff = execFileSync("git", [
@@ -29,6 +40,20 @@ export const Git = {
         execFileSync("git", ["commit", "-m", message], { stdio: "inherit" });
     },
     push() {
-        execFileSync("git", ["push"], { stdio: "inherit" });
+        try {
+            execFileSync("git", ["push"], { stdio: "inherit" });
+        } catch (error) {
+            const branch = this.getCurrentBranch();
+
+            console.log(chalk.yellow(`\n⚠️  Branch [${branch}] sem upstream detectada.`));
+            console.log(chalk.blue(`🌍 Configurando upstream origin ${branch}...`));
+
+            try {
+                execFileSync("git", ["push", "--set-upstream", "origin", branch], { stdio: "inherit" });
+                console.log(chalk.green(`✅ Branch [${branch}] configurada e push realizado!`));
+            } catch (pushError) {
+                console.error(chalk.red("❌ Erro ao configurar upstream e realizar push:"), pushError);
+            }
+        }
     }
 }
