@@ -27,5 +27,8 @@ export const Git = {
     },
     commit(message: string) {
         execFileSync("git", ["commit", "-m", message], { stdio: "inherit" });
+    },
+    push() {
+        execFileSync("git", ["push"], { stdio: "inherit" });
     }
 }

@@ -10,7 +10,7 @@ async function main() {
     const apiKey = env.GEMINI_API_KEY;
     console.log(chalk.blue("🔍 Verificando ambiente..."))
     console.log(chalk.blue(`🔑 API Key: ${apiKey ? "Configurada" : "Não configurada"}`));
-    
+
     if (!apiKey) {
         console.error(chalk.red("❌ GEMINI_API_KEY não configurada."));
         process.exit(1);
@@ -49,31 +49,49 @@ async function main() {
             ]
         });
 
-        if (action === 'commit') {
-            Git.commit(currentMessage);
-            console.log(chalk.green("✅ Feito!"));
-            isDone = true;
+        if (action === 'regenerate') {
+            currentMessage = "";
+            continue;
         }
-        else if (action === 'edit') {
+
+        if (action === 'cancel' || !action) {
+            console.log(chalk.yellow("Tchau!"));
+            break;
+        }
+
+        let finalMessage = currentMessage;
+
+        if (action === 'edit') {
             const { edited } = await prompts({
                 type: 'text',
                 name: 'edited',
-                message: 'Edite:',
+                message: 'Edite a mensagem de commit:',
                 initial: currentMessage
             });
-            if (edited) {
-                Git.commit(edited);
-                console.log(chalk.green("✅ Feito!"));
-                isDone = true;
+            if (edited && edited.trim() !== "") {
+                finalMessage = edited.trim();
+            } else {
+                console.log(chalk.yellow("Nenhuma edição feita, usando sugestão original."));
+                continue;
             }
         }
-        else if (action === 'regenerate') {
-            currentMessage = "";
+
+        Git.commit(finalMessage);
+        console.log(chalk.green("✅ Commit realizado com sucesso!"));
+        const { push } = await prompts({
+            type: 'confirm',
+            name: 'push',
+            message: 'Deseja fazer push agora?',
+            initial: true
+        });
+        if (push) {
+            console.log(chalk.cyan("⬆️ Enviando para o repositório remoto..."));
+            Git.push();
+            console.log(chalk.bold.green("✨ Tudo pronto! Código na nuvem."));
+        } else {
+            console.log(chalk.yellow("👍 Commit mantido localmente."));
         }
-        else {
-            console.log(chalk.yellow("Tchau!"));
-            isDone = true;
-        }
+        isDone = true;
     }
 
 }
