@@ -60,6 +60,7 @@ async function main() {
         }
 
         if (action === 'cancel' || !action) {
+            console.log("\n")
             console.log(chalk.yellow("Tchau!"));
             break;
         }
@@ -82,6 +83,7 @@ async function main() {
         }
 
         Git.commit(finalMessage);
+        console.log("\n")
         console.log(chalk.green("✅ Commit realizado com sucesso!"));
         const { push } = await prompts({
             type: 'confirm',
@@ -90,8 +92,10 @@ async function main() {
             initial: true
         });
         if (push) {
+            console.log("\n")
             console.log(chalk.cyan("⬆️ Enviando para o repositório remoto..."));
             Git.push();
+            console.log("\n")
             console.log(chalk.bold.green("✨ Tudo pronto! Código na nuvem."));
         } else {
             console.log(chalk.yellow("👍 Commit mantido localmente."));
