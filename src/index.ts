@@ -16,13 +16,18 @@ async function main() {
         process.exit(1);
     }
 
-    const diff = Git.getStagedDiff();
-    if (!diff) {
+    const filesSummary = Git.getChangedFilesSummary();
+    if (!filesSummary) {
         console.log(chalk.yellow("⚠️ Use 'git add' primeiro."));
         return;
     }
 
+    const diff = Git.getStagedDiff() ?? "";
+    const fileCount = filesSummary.split("\n").length;
+
     console.log(chalk.blue(`🚀 Projeto: [${Git.getProjectName()}]`));
+    console.log(chalk.blue(`📂 Arquivos staged: ${fileCount}`));
+    console.log(chalk.gray(filesSummary));
 
     let currentMessage = "";
     let isDone = false;
@@ -30,7 +35,7 @@ async function main() {
     while (!isDone) {
         if (!currentMessage) {
             console.log(chalk.cyan("🤖 Gerando sugestão..."));
-            currentMessage = await getCommitSuggestion(apiKey, diff);
+            currentMessage = await getCommitSuggestion(apiKey, diff, filesSummary);
         }
 
         console.log(chalk.gray("\n--- Sugestão ---"));

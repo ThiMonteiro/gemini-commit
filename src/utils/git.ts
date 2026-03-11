@@ -28,6 +28,44 @@ export const Git = {
             return null;
         }
     },
+
+    getChangedFilesSummary(): string {
+        try {
+            const output = execFileSync("git", [
+                "diff",
+                "--staged",
+                "--name-status",
+                "--",
+                ".",
+                ":(exclude)package-lock.json",
+                ":(exclude)yarn.lock",
+                ":(exclude)pnpm-lock.yaml"
+            ]).toString().trim();
+
+            if (!output) return "";
+
+            const statusMap: Record<string, string> = {
+                M: "modificado",
+                A: "adicionado",
+                D: "removido",
+                R: "renomeado",
+                C: "copiado",
+                U: "não mesclado",
+            };
+
+            const lines = output.split("\n").map((line) => {
+                const parts = line.split("\t");
+                const statusCode = parts[0]?.charAt(0) ?? "?";
+                const fileName = parts[parts.length - 1] ?? "desconhecido";
+                const status = statusMap[statusCode] ?? "alterado";
+                return `- ${fileName} (${status})`;
+            });
+
+            return lines.join("\n");
+        } catch {
+            return "";
+        }
+    },
     getProjectName(): string {
         try {
             const gitConfig = execFileSync("git", ["config", "--get", "remote.origin.url"]).toString();
