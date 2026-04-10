@@ -113,6 +113,17 @@ type CommitKind = {
     title: string;
 };
 
+type ParsedFile = {
+    file: string;
+    status: string;
+};
+
+type FileDiffInsight = {
+    additions: number;
+    deletions: number;
+    content: string;
+};
+
 function truncateTitle(title: string): string {
     if (title.length <= TITLE_LIMIT) {
         return title;
@@ -203,7 +214,7 @@ function inferFileDescription(file: string, status: string, diff: string): strin
     return `${action} implementacao relacionada ao fluxo de commit automatizado`;
 }
 
-function parseFilesSummary(filesSummary: string): Array<{ file: string; status: string }> {
+function parseFilesSummary(filesSummary: string): ParsedFile[] {
     return filesSummary
         .split("\n")
         .map((line) => line.trim())
@@ -219,13 +230,251 @@ function parseFilesSummary(filesSummary: string): Array<{ file: string; status: 
         });
 }
 
+function parseDiffByFile(diff: string): Map<string, FileDiffInsight> {
+    const insights = new Map<string, FileDiffInsight>();
+    const lines = diff.split("\n");
+    let currentFile: string | null = null;
+
+    for (const line of lines) {
+        if (line.startsWith("diff --git ")) {
+            const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+            currentFile = match?.[2] ?? null;
+
+            if (currentFile && !insights.has(currentFile)) {
+                insights.set(currentFile, { additions: 0, deletions: 0, content: "" });
+            }
+
+            continue;
+        }
+
+        if (!currentFile) {
+            continue;
+        }
+
+        const current = insights.get(currentFile);
+
+        if (!current) {
+            continue;
+        }
+
+        if (line.startsWith("+") && !line.startsWith("+++")) {
+            current.additions += 1;
+            current.content += `${line.slice(1)}\n`;
+            continue;
+        }
+
+        if (line.startsWith("-") && !line.startsWith("---")) {
+            current.deletions += 1;
+            current.content += `${line.slice(1)}\n`;
+        }
+    }
+
+    return insights;
+}
+
+function pickAction(status: string): string {
+    const actionMap: Record<string, string> = {
+        adicionado: "adiciona",
+        modificado: "atualiza",
+        removido: "remove",
+        renomeado: "renomeia",
+        copiado: "copia",
+        alterado: "ajusta"
+    };
+
+    return actionMap[status] || "atualiza";
+}
+
+function inferDomainFromPath(file: string): string | null {
+    const lowerFile = file.toLowerCase();
+    const segments = lowerFile.split("/");
+
+    if (lowerFile.startsWith("apps/admin/")) {
+        return "aplicacao administrativa";
+    }
+
+    if (lowerFile.startsWith("apps/web/")) {
+        return "aplicacao web";
+    }
+
+    if (lowerFile.startsWith("packages/backend/")) {
+        return "servicos do backend";
+    }
+
+    if (lowerFile.startsWith("packages/")) {
+        return "pacotes compartilhados";
+    }
+
+    if (lowerFile.startsWith("migrations/")) {
+        return "migracoes de banco de dados";
+    }
+
+    if (segments.includes("actions")) {
+        return "camada de actions";
+    }
+
+    if (segments.includes("components")) {
+        return "camada de componentes";
+    }
+
+    if (segments.includes("app")) {
+        return "camada de rotas da aplicacao";
+    }
+
+    if (segments.includes("db") || segments.includes("schema")) {
+        return "camada de persistencia";
+    }
+
+    return null;
+}
+
+function inferDescriptionFromFileType(file: string): string | null {
+    const lowerFile = file.toLowerCase();
+
+    if (lowerFile.endsWith(".sql")) {
+        return "estrutura e consultas relacionadas ao banco";
+    }
+
+    if (lowerFile.endsWith("page.tsx")) {
+        return "renderizacao e carregamento da pagina";
+    }
+
+    if (lowerFile.endsWith(".tsx")) {
+        return "componente e comportamento da interface";
+    }
+
+    if (lowerFile.endsWith(".ts")) {
+        if (lowerFile.endsWith("/types.ts")) {
+            return "tipagens e contratos usados no fluxo";
+        }
+
+        if (lowerFile.endsWith("/db.ts")) {
+            return "acesso a dados e operacoes de persistencia";
+        }
+
+        if (lowerFile.endsWith("/index.ts")) {
+            return "ponto de entrada e exportacoes do modulo";
+        }
+
+        if (lowerFile.endsWith("/server.ts")) {
+            return "configuracao do servidor e integracoes";
+        }
+
+        if (lowerFile.includes("/actions/")) {
+            return "acoes do servidor e regras de negocio";
+        }
+
+        return "logica e regras do modulo";
+    }
+
+    if (lowerFile.endsWith(".md")) {
+        return "documentacao do uso e do comportamento esperado";
+    }
+
+    if (lowerFile.endsWith(".lock")) {
+        return "travamento de versoes e resolucao de dependencias";
+    }
+
+    return null;
+}
+
+function inferDescriptionFromFileDiff(file: string, fileDiff: FileDiffInsight | undefined): string | null {
+    if (!fileDiff) {
+        return null;
+    }
+
+    const lowerContent = fileDiff.content.toLowerCase();
+    const lowerFile = file.toLowerCase();
+
+    if (lowerFile.includes("gemini")) {
+        return "integracao com Gemini e tratamento de falhas da API";
+    }
+
+    if (lowerFile.includes("commitengine")) {
+        return "fluxo interativo e recuperacao de erros na geracao";
+    }
+
+    if (lowerFile.includes("git")) {
+        return "leitura do estado staged e operacoes de commit";
+    }
+
+    if (lowerFile.includes("prompt")) {
+        return "instrucoes enviadas ao modelo para gerar commits";
+    }
+
+    if (lowerContent.includes("zod") || lowerContent.includes("schema")) {
+        return "validacao de dados e definicao de esquema";
+    }
+
+    if (lowerContent.includes("select ") || lowerContent.includes("insert ") || lowerContent.includes("update ") || lowerContent.includes("delete ")) {
+        return "consultas e manipulacao de dados persistidos";
+    }
+
+    if (lowerContent.includes("fetch(") || lowerContent.includes("await fetch") || lowerContent.includes("axios")) {
+        return "integracao com requisicoes externas";
+    }
+
+    if (lowerContent.includes("use state") || lowerContent.includes("usestate") || lowerContent.includes("useeffect") || lowerContent.includes("form")) {
+        return "estado da interface e interacoes do formulario";
+    }
+
+    if (lowerContent.includes("export type") || lowerContent.includes("interface ") || lowerContent.includes("type ")) {
+        return "tipagens e contratos compartilhados";
+    }
+
+    if (lowerContent.includes("try {") || lowerContent.includes("catch") || lowerContent.includes("error")) {
+        return "tratamento de erros e fluxo de excecao";
+    }
+
+    if (fileDiff.additions > 0 && fileDiff.deletions === 0) {
+        return "novas capacidades no fluxo deste modulo";
+    }
+
+    if (fileDiff.deletions > 0 && fileDiff.additions === 0) {
+        return "remocao de codigo e simplificacao do fluxo";
+    }
+
+    if (fileDiff.additions > 0 && fileDiff.deletions > 0) {
+        return "comportamento interno e organizacao do fluxo";
+    }
+
+    return null;
+}
+
+function buildFileDescription(file: string, status: string, fileDiff: FileDiffInsight | undefined): string {
+    const action = pickAction(status);
+    const specific = inferDescriptionFromFileDiff(file, fileDiff);
+
+    if (specific) {
+        return `${action} ${specific}`;
+    }
+
+    const byType = inferDescriptionFromFileType(file);
+    const domain = inferDomainFromPath(file);
+
+    if (byType && domain) {
+        return `${action} ${byType} do ${domain}`;
+    }
+
+    if (byType) {
+        return `${action} ${byType}`;
+    }
+
+    if (domain) {
+        return `${action} implementacao ligada ao ${domain}`;
+    }
+
+    return inferFileDescription(file, status, fileDiff?.content ?? "");
+}
+
 export function buildFallbackCommitSuggestion(diff: string, filesSummary: string): string {
     const parsedFiles = parseFilesSummary(filesSummary);
+    const diffByFile = parseDiffByFile(diff);
     const fileNames = parsedFiles.map(({ file }) => file);
     const kind = detectCommitKind(fileNames, diff);
     const header = `${kind.emoji} ${kind.type}(${kind.scope}): ${truncateTitle(kind.title)}`;
     const body = parsedFiles
-        .map(({ file, status }) => `- ${file}: ${inferFileDescription(file, status, diff)}.`)
+        .map(({ file, status }) => `- ${file}: ${buildFileDescription(file, status, diffByFile.get(file))}.`)
         .join("\n");
 
     return `${header}\n\n${body}`;
