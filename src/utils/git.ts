@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { execFileSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 
 export const Git = {
 
@@ -10,6 +10,13 @@ export const Git = {
         } catch {
             return "main";
         }
+    },
+
+    getRecentCommits(count: number = 5): string {
+        try {
+            // Retorna os últimos títulos e corpos para a IA entender seu estilo
+            return execSync(`git log -${count} --pretty=format:"%s %b"`).toString().trim();
+        } catch { return ""; }
     },
 
     getStagedDiff(): string | null {
@@ -53,15 +60,14 @@ export const Git = {
                 U: "não mesclado",
             };
 
-            const lines = output.split("\n").map((line) => {
+            return output.split("\n").map(line => {
                 const parts = line.split("\t");
-                const statusCode = parts[0]?.charAt(0) ?? "?";
-                const fileName = parts[parts.length - 1] ?? "desconhecido";
-                const status = statusMap[statusCode] ?? "alterado";
-                return `- ${fileName} (${status})`;
-            });
+                const code = parts[0];
+                // Se for renomeado (R), o nome final é o último elemento do array
+                const file = parts[parts.length - 1];
 
-            return lines.join("\n");
+                return `- ${file} (${statusMap[code[0]] || "alterado"})`;
+            }).join("\n");
         } catch {
             return "";
         }
