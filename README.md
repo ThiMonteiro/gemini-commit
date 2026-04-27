@@ -10,8 +10,10 @@ O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Int
 
 - 🤖 **Inteligência Artificial:** Utiliza a API rápida e acessível do `gemini-2.5-flash` do Google.
 - 📦 **Padrão Semântico:** Criação de títulos seguindo à risca a especificação dos Conventional Commits (com emojis apropriados).
-- 🧾 **Descrições Detalhadas:** Gera automaticamente o *corpo* da mensagem de commit quando envolvem múltiplos arquivos ou mudanças não-triviais.
-- 💬 **Revisão Interativa:** O CLI sempre perguntará se você deseja confirmar a sugestão antes de acionar o `git commit`.
+- 🧠 **Perfil de Estilo:** Aprende automaticamente com o seu histórico de commits — vocabulário, escopos e tipos preferidos — e aplica esse estilo nas sugestões.
+- 🗂️ **Agrupamento Inteligente:** Em vez de listar arquivo por arquivo, agrupa mudanças por propósito e exibe blocos temáticos como `[Interface]`, `[Assets]` e `[Config]`.
+- 🔀 **Dois modos de commit:** Escolha entre `--detailed` (agrupado, técnico) ou `--overview` (resumo de valor entregue).
+- 💬 **Revisão Interativa:** O CLI sempre perguntará se você deseja confirmar, editar ou gerar uma nova sugestão antes de acionar o `git commit`.
 
 ---
 
@@ -22,117 +24,177 @@ O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Int
 - [Node.js](https://nodejs.org/) (versão 18+ recomendada)
 - Git instalado e configurado na sua máquina
 - Uma Chave de API do Google Gemini. Adquira a sua gratuitamente no [Google AI Studio](https://aistudio.google.com/).
-- [t3env](https://www.npmjs.com/package/t3env) instalado globalmente para validação de variáveis de ambiente (opcional, mas recomendado)
-
-> **Nota:** O `gemini-commit` utiliza o pacote [t3env](https://www.npmjs.com/package/t3env) para validar a existência e formato da variável de ambiente `GEMINI_API_KEY`. Caso não esteja presente ou inválida, o CLI exibirá um erro amigável e instruções para correção.
-
-Para instalar o t3env globalmente:
-```bash
-npm install -g t3env
-```
-
-Se preferir, o pacote será instalado automaticamente como dependência do projeto, mas o uso global permite validar variáveis em outros projetos também.
 
 ### 2. Configurando a Chave de API
 
 Para que a ferramenta funcione de qualquer lugar da sua máquina globalmente, defina sua chave de API nas variáveis do sistema.
 
-**Para usuários de Linux/macOs (`bash` ou `zsh`):**
+**Para usuários de Linux/macOS (`bash` ou `zsh`):**
 
-Abra o terminal e adicione a variável ao seu arquivo `.bashrc` ou `.zshrc`:
 ```bash
 echo 'export GEMINI_API_KEY="SUA_CHAVE_AQUI_GERADA_NO_GOOGLE"' >> ~/.bashrc
-# E recarregue a configuração (se usar zsh, altere o arquivo):
+# Recarregue a configuração (se usar zsh, altere o arquivo):
 source ~/.bashrc
 ```
 
-*Alternativa local:* Se preferir, você também pode criar um arquivo `.env` na raiz do projeto contendo `GEMINI_API_KEY=sua_chave`.
+*Alternativa local:* Você também pode criar um arquivo `.env` na raiz do projeto contendo `GEMINI_API_KEY=sua_chave`.
 
 ### 3. Instalação (Global)
 
-Como o projeto está publicado localmente por você ou em um NPM, você pode linkar o repositório como pacote global para uso em qualquer pasta:
-
 ```bash
-# Clone o repositório se ainda não o fez
+# Clone o repositório
 git clone https://github.com/SeuUsuario/gemini-commit.git
 cd gemini-commit
 
-# Instale as dependências e faça build do projeto:
+# Instale as dependências e faça o build:
 npm install
 npm run build
 
-# Linke o pacote globalmente usando o npm
+# Linke o pacote globalmente
 npm link
 ```
+
 *Agora o comando `gcommit` estará disponível no seu terminal.*
 
 ---
 
 ## 🏗️ Estrutura do Projeto
 
-Para garantir um código limpo, testável e manutenível, o `gemini-commit` foi modularizado da seguinte forma:
-
 ```
 src/
-├── index.ts           # Ponto de entrada (CLI controller e fluxos de I/O)
+├── index.ts               # Ponto de entrada — leitura de args e bootstrap
 ├── constants/
-│   └── prompt.ts      # Regras de sistema rígidas da IA (System Instructions)
+│   └── prompt.ts          # System instructions das duas modes (DETAILED e OVERVIEW)
+├── core/
+│   └── CommitEngine.ts    # Loop interativo, exibição e fluxo de decisão
 ├── services/
-│   └── gemini.ts      # Serviço isolado de comunicação com a API do Google Generative AI
+│   ├── gemini.ts          # Comunicação com a API Gemini + fallback local
+│   └── styleProfile.ts    # Extração e cache do perfil de estilo do desenvolvedor
 └── utils/
-    └── git.ts         # Utilitários de execução e extração de dados do Git Local
+    └── git.ts             # Operações Git (diff, log, commit, push)
 ```
 
 ---
 
 ## 🚀 Como Usar
 
-O uso do `gemini-commit` é incrivelmente simples.
-
-1. Trabalhe em seu código normalmente.
-2. Adicione as alterações que deseja commitar ao *staging area* utilizando o `git add`:
+1. Trabalhe no seu código normalmente.
+2. Adicione as alterações ao *staging area*:
 
 ```bash
 git add src/index.ts utils/helpers.js
 ```
 
-3. Geração Automática! Execute o CLI em vez de usar `git commit`:
+3. Execute o `gcommit` no lugar do `git commit`:
 
 ```bash
-# Ou use npm run start se for rodar o código-fonte manualmente
-gcommit 
+gcommit              # modo padrão (detailed)
+gcommit --overview   # modo resumido
+gcommit --detailed   # modo detalhado explícito
 ```
 
-### Exemplo de Fluxo
+---
+
+## 🔀 Modos de Commit
+
+### `--detailed` (padrão)
+
+Agrupa os arquivos modificados por propósito técnico e exibe blocos temáticos. Ideal para PRs, features maiores e refatorações onde o contexto técnico importa.
+
+```
+♻️ refactor(core): modulariza geração de commits
+
+[Funcionalidade]
+- src/services (2 arquivos): separa lógica de estilo e comunicação com Gemini
+
+[Config]
+- tsconfig.json: ajusta paths para nova estrutura de módulos
+```
+
+### `--overview`
+
+Foca no valor entregue, sem mencionar arquivos. Ideal para o dia a dia, commits rápidos e situações onde o *o quê foi feito* importa mais do que *como foi feito*.
+
+**Mudança única:**
+```
+✨ feat(auth): adiciona login com Google
+
+Implementa autenticação OAuth2 via Google com persistência de sessão
+e redirecionamento automático após o login.
+```
+
+**Mudanças distintas:**
+```
+🔧 chore(core): ajustes gerais na aplicação
+
+- Corrige crash ao abrir modal em telas pequenas
+- Adiciona validação de e-mail no formulário de cadastro
+- Atualiza dependências do projeto para versões estáveis
+```
+
+---
+
+## 🧠 Perfil de Estilo
+
+Na primeira execução em um repositório, o `gcommit` analisa os últimos 20 commits do `git log` e extrai automaticamente:
+
+- Seus **tipos preferidos** (`✨ feat`, `🐛 fix`, etc.)
+- Os **escopos** que você costuma usar (`cli`, `core`, `ui`...)
+- O **vocabulário recorrente** nos seus títulos
+
+Esse perfil é salvo em `.gcommit-profile.json` na raiz do projeto e usado como contexto para o Gemini gerar sugestões no seu estilo. O cache é atualizado automaticamente sempre que novos commits são detectados — sem nenhuma ação manual.
+
+> **Nota:** O arquivo `.gcommit-profile.json` é local e está no `.gitignore`. Cada desenvolvedor gera o seu próprio perfil com base no seu histórico.
+
+---
+
+## 💬 Fluxo Interativo
 
 ```text
-🚀 Analisando alterações em [seu-projeto]...
+🚀 Projeto: [meu-projeto]
+📂 Arquivos staged: 3 · modo: detailed
+🧠 Perfil de estilo carregado do cache.
 🤖 Consultando o Gemini para gerar a mensagem de commit...
 
---- Sugestão do Gemini ---
-✨ feat(cli): adiciona suporte ao idioma português
+--- Sugestão ---
+✨ feat(cli): adiciona dois modos de geração de commit
 
-- src/index.ts: modifica instruções de sistema para forçar pt-BR nas respostas da API.
-- README.md: adiciona documentação da CLI de comandos.
---------------------------
+[Funcionalidade]
+- src/services/gemini.ts: implementa seleção de system instruction por modo
+- src/core/CommitEngine.ts: exibe modo ativo e repassa contexto ao serviço
 
-? Deseja realizar o commit com esta mensagem? › (Y/n)
+[Config]
+- src/constants/prompt.ts: adiciona instruções DETAILED e OVERVIEW separadas
+----------------
+
+? O que deseja fazer? ›
+❯ ✅ Aceitar e Commitar
+  🔄 Gerar nova sugestão
+  ✏️  Editar mensagem
+  ❌ Cancelar
 ```
-
-Basta digitar `Y` e apertar Enter e o commit será finalizado com sucesso no seu histórico Git!
 
 ---
 
 ## ⚠️ Possíveis Erros e Soluções
 
-- `"Nenhuma alteração detectada no stage. Use 'git add' primeiro."`
-  **Solução:** O gemini-commit varre apenas arquivos dentro do pacote do `git add`. Lembre-se sempre do *stage*.
-- `"GEMINI_API_KEY não encontrada nas variáveis de ambiente."`
-  **Solução:** Você não exportou com sucesso a chave para as variáveis de terminal global do PC. Verifique o seu passo 2.
+- **`"Use 'git add' primeiro."`**
+  O `gcommit` analisa apenas arquivos no stage. Execute `git add` antes de rodar o comando.
+
+- **`"GEMINI_API_KEY não encontrada."`**
+  A variável de ambiente não foi exportada corretamente. Verifique o passo 2 da instalação.
+
+- **`"Limite de requisições do Gemini atingido."`**
+  A API retornou 429. O CLI tentará automaticamente até 3 vezes com backoff. Se persistir, aguarde alguns instantes.
+
+- **`"Falha de rede ao contatar o Gemini."`**
+  Verifique sua conexão, VPN ou proxy. O CLI usará um fallback local para gerar uma sugestão básica.
+
+---
 
 ## 🤝 Contribuições
 
-Este projeto foi construído para ajudar na qualidade do código através de commits semânticos perfeitos. Sinta-se à vontade para enviar *pull requests*, adicionar *issues* e melhorarmos essa ferramenta.
+Sinta-se à vontade para enviar *pull requests*, abrir *issues* e sugerir melhorias.
 
 Data: 25/02/2026
-Autor: Thiago
+Autor: Thiago Monteiro
