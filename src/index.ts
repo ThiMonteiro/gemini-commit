@@ -3,6 +3,16 @@ import chalk from "chalk";
 import "dotenv/config";
 import { CommitEngine } from "./core/CommitEngine.js";
 import { env } from "./env.js";
+import type { CommitMode } from "./services/gemini.js";
+
+function parseArgs(): { mode: CommitMode } {
+    const args = process.argv.slice(2);
+
+    if (args.includes("--overview")) return { mode: "overview" };
+    if (args.includes("--detailed")) return { mode: "detailed" };
+
+    return { mode: "detailed" };
+}
 
 async function bootstrap() {
     const apiKey = env.GEMINI_API_KEY;
@@ -12,8 +22,9 @@ async function bootstrap() {
         process.exit(1);
     }
 
-    // Inicializa e executa o motor
-    const engine = new CommitEngine(apiKey);
+    const { mode } = parseArgs();
+
+    const engine = new CommitEngine(apiKey, mode);
     await engine.run();
 }
 

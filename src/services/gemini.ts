@@ -1,14 +1,14 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import chalk from "chalk";
-import { SYSTEM_INSTRUCTIONS } from "../constants/prompt.js";
+import { SYSTEM_INSTRUCTIONS_DETAILED, SYSTEM_INSTRUCTIONS_OVERVIEW } from "../constants/prompt.js";
 
 const DIFF_CHAR_LIMIT = 100_000;
 const MAX_RETRIES = 3;
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const TITLE_LIMIT = 50;
-
-// Limiar: se um grupo tem >= N arquivos, vira linha de grupo em vez de linhas individuais
 const GROUP_THRESHOLD = 2;
+
+export type CommitMode = "detailed" | "overview";
 
 export class GeminiServiceError extends Error {
     readonly code: string;
@@ -44,18 +44,9 @@ function getErrorStatus(error: unknown): number | undefined {
 function isRetryableError(error: unknown): boolean {
     const message = getErrorMessage(error).toLowerCase();
     const status = getErrorStatus(error);
-
     if (status && RETRYABLE_STATUS_CODES.has(status)) return true;
-
-    return [
-        "fetch failed",
-        "service unavailable",
-        "network",
-        "econnreset",
-        "etimedout",
-        "timeout",
-        "temporar"
-    ].some((fragment) => message.includes(fragment));
+    return ["fetch failed", "service unavailable", "network", "econnreset", "etimedout", "timeout", "temporar"]
+        .some((f) => message.includes(f));
 }
 
 function normalizeGeminiError(error: unknown): GeminiServiceError {
@@ -102,24 +93,10 @@ function normalizeGeminiError(error: unknown): GeminiServiceError {
 // Tipos internos
 // ---------------------------------------------------------------------------
 
-type ParsedFile = {
-    file: string;
-    status: string;
-};
-
-type FileDiffInsight = {
-    additions: number;
-    deletions: number;
-    content: string;
-};
-
-/** Um grupo de arquivos com propósito compartilhado. */
-type FileGroup = {
-    label: string;        // ex: "src/components", "assets/images", "migrations"
-    files: ParsedFile[];
-    theme: string;        // rótulo temático: "Interface", "Assets", etc.
-    description: string;  // descrição técnica gerada
-};
+type ParsedFile = { file: string; status: string };
+type FileDiffInsight = { additions: number; deletions: number; content: string };
+type FileGroup = { label: string; files: ParsedFile[]; theme: string; description: string };
+type CommitKind = { emoji: string; type: string; scope: string; title: string };
 
 // ---------------------------------------------------------------------------
 // Utilitários de título
@@ -130,77 +107,43 @@ function truncateTitle(title: string): string {
     return `${title.slice(0, TITLE_LIMIT - 3).trimEnd()}...`;
 }
 
-// ---------------------------------------------------------------------------
-// Detecção do tipo de commit (header)
-// ---------------------------------------------------------------------------
-
-type CommitKind = {
-    emoji: string;
-    type: string;
-    scope: string;
-    title: string;
-};
-
 function toScope(files: string[]): string {
-    const normalized = files
-        .map((file) => file.split("/")[0])
-        .filter((part) => part && !part.includes("."));
-    if (normalized.length === 0) return "core";
-    return normalized[0].toLowerCase();
+    const normalized = files.map((f) => f.split("/")[0]).filter((p) => p && !p.includes("."));
+    return normalized.length === 0 ? "core" : normalized[0].toLowerCase();
 }
 
 function detectCommitKind(files: string[], diff: string): CommitKind {
     const content = `${files.join("\n")}\n${diff}`.toLowerCase();
-
-    if (files.some((f) => /(^|\/)(readme|docs?)|\.md$/i.test(f))) {
+    if (files.some((f) => /(^|\/)(readme|docs?)|\.md$/i.test(f)))
         return { emoji: "📝", type: "docs", scope: "docs", title: "documenta uso e fluxo do projeto" };
-    }
-    if (files.some((f) => /(\.|\/)(spec|test)\./i.test(f) || /__tests__/i.test(f))) {
+    if (files.some((f) => /(\.|\/)(spec|test)\./i.test(f) || /__tests__/i.test(f)))
         return { emoji: "✅", type: "test", scope: "tests", title: "cobre cenarios com novos testes" };
-    }
-    if (files.some((f) => /package\.json|tsconfig|vite|webpack|rollup|eslint|prettier|docker|github\/workflows/i.test(f))) {
+    if (files.some((f) => /package\.json|tsconfig|vite|webpack|rollup|eslint|prettier|docker|github\/workflows/i.test(f)))
         return { emoji: "🔧", type: "chore", scope: "config", title: "ajusta configuracoes do projeto" };
-    }
-    if (content.includes("fix") || content.includes("error") || content.includes("bug") || content.includes("catch")) {
+    if (content.includes("fix") || content.includes("error") || content.includes("bug") || content.includes("catch"))
         return { emoji: "🐛", type: "fix", scope: toScope(files), title: "corrige falhas no fluxo de commit" };
-    }
-    if (content.includes("refactor") || content.includes("rename") || content.includes("extract") || content.includes("cleanup")) {
+    if (content.includes("refactor") || content.includes("rename") || content.includes("extract") || content.includes("cleanup"))
         return { emoji: "♻️", type: "refactor", scope: toScope(files), title: "reorganiza fluxo interno do commit" };
-    }
     return { emoji: "✨", type: "feat", scope: toScope(files), title: "adiciona suporte ao fluxo de commit" };
 }
 
 // ---------------------------------------------------------------------------
-// Algoritmo de agrupamento
+// Algoritmo de agrupamento (usado no fallback DETAILED)
 // ---------------------------------------------------------------------------
 
-/**
- * Retorna a "chave de grupo" de um arquivo.
- * Arquivos na mesma pasta imediata + mesma extensão formam um grupo.
- * Arquivos na raiz são agrupados apenas por extensão.
- */
 function groupKey(file: string): string {
     const parts = file.split("/");
-
     if (parts.length === 1) {
-        // arquivo na raiz: agrupa por extensão
         const ext = file.includes(".") ? file.split(".").pop()! : "misc";
         return `(raiz)/${ext}`;
     }
-
-    // pasta imediata (primeiro segmento do caminho)
     const folder = parts.slice(0, -1).join("/");
     const ext = file.includes(".") ? file.split(".").pop()! : "misc";
     return `${folder}/${ext}`;
 }
 
-/**
- * Retorna um rótulo temático baseado no caminho do arquivo.
- * Usado para criar os blocos [Interface], [Assets], etc.
- */
 function themeOf(file: string): string {
     const lower = file.toLowerCase();
-
     if (/\.(png|jpg|jpeg|gif|svg|webp|ico|avif)$/i.test(file)) return "Assets";
     if (/\.(sql|migration)/.test(lower) || lower.includes("migration")) return "Banco de Dados";
     if (/\.(spec|test)\.(ts|tsx|js|jsx)$/.test(lower) || lower.includes("__tests__")) return "Testes";
@@ -210,130 +153,41 @@ function themeOf(file: string): string {
     if (lower.includes("service") || lower.includes("api") || lower.includes("hook")) return "Funcionalidade";
     if (lower.includes("util") || lower.includes("helper") || lower.includes("lib/")) return "Utilitários";
     if (lower.includes("db") || lower.includes("schema") || lower.includes("model")) return "Banco de Dados";
-
     return "Funcionalidade";
 }
 
-/**
- * Gera uma descrição curta para um grupo de arquivos com base no status
- * e nos padrões encontrados nos nomes/caminhos.
- */
+function pickAction(status: string): string {
+    const map: Record<string, string> = {
+        adicionado: "adiciona", modificado: "atualiza", removido: "remove",
+        renomeado: "renomeia", copiado: "copia", alterado: "ajusta"
+    };
+    return map[status] || "atualiza";
+}
+
 function describeGroup(files: ParsedFile[], diff: string): string {
-    const sample = files[0];
+    const action = pickAction(files[0].status);
     const lowerFiles = files.map((f) => f.file.toLowerCase()).join(" ");
-    const lowerDiff = diff.toLowerCase().slice(0, 5000); // limita para performance
-
-    const action = pickAction(sample.status);
-
-    // Detecta padrões comuns
+    const lowerDiff = diff.toLowerCase().slice(0, 5000);
     if (/\.(png|jpg|jpeg|gif|webp|avif)/.test(lowerFiles)) {
         const exts = [...new Set(files.map((f) => f.file.split(".").pop()))];
         if (exts.length === 1) return `${action} assets de imagem no formato ${exts[0]!.toUpperCase()}`;
         return `converte formato ${exts.slice(0, -1).join(", ").toUpperCase()} → ${exts.at(-1)!.toUpperCase()}`;
     }
     if (lowerFiles.includes(".svg")) return `${action} ícones SVG`;
-    if (lowerFiles.includes("migration") || lowerFiles.includes(".sql")) return `${action} estrutura de tabelas no banco de dados`;
+    if (lowerFiles.includes("migration") || lowerFiles.includes(".sql")) return `${action} estrutura de tabelas no banco`;
     if (lowerFiles.includes(".spec.") || lowerFiles.includes(".test.")) return `${action} cobertura de testes`;
     if (lowerFiles.includes("component") || /\.tsx/.test(lowerFiles)) {
-        if (lowerDiff.includes("disabled") || lowerDiff.includes("readonly")) return `${action} prop de controle de estado nos componentes`;
+        if (lowerDiff.includes("disabled") || lowerDiff.includes("readonly")) return `${action} prop de controle de estado`;
         if (lowerDiff.includes("style") || lowerDiff.includes("classname")) return `${action} estilos visuais dos componentes`;
         return `${action} componentes e comportamentos da interface`;
     }
     if (lowerFiles.includes("service") || lowerFiles.includes("api")) return `${action} integração e lógica de serviço`;
     if (lowerFiles.includes("hook")) return `${action} hooks e lógica de estado`;
-    if (lowerDiff.includes("import") || lowerDiff.includes("export")) return `${action} exportações e importações do módulo`;
-
     return `${action} implementação do módulo`;
 }
 
-function pickAction(status: string): string {
-    const actionMap: Record<string, string> = {
-        adicionado: "adiciona",
-        modificado: "atualiza",
-        removido: "remove",
-        renomeado: "renomeia",
-        copiado: "copia",
-        alterado: "ajusta"
-    };
-    return actionMap[status] || "atualiza";
-}
-
-/**
- * Agrupa os arquivos por (pasta + extensão) e retorna FileGroup[].
- * Grupos com apenas 1 arquivo que seja único em seu tema ficam individuais.
- */
-function groupFiles(parsedFiles: ParsedFile[], diff: string): FileGroup[] {
-    // 1. Mapeia cada arquivo para sua chave de grupo
-    const buckets = new Map<string, ParsedFile[]>();
-
-    for (const f of parsedFiles) {
-        const key = groupKey(f.file);
-        if (!buckets.has(key)) buckets.set(key, []);
-        buckets.get(key)!.push(f);
-    }
-
-    // 2. Converte buckets em FileGroup[]
-    const groups: FileGroup[] = [];
-
-    for (const [key, files] of buckets) {
-        const folder = key.split("/").slice(0, -1).join("/") || "(raiz)";
-        const theme = themeOf(files[0].file);
-        const description = describeGroup(files, diff);
-
-        groups.push({ label: folder, files, theme, description });
-    }
-
-    return groups;
-}
-
-/**
- * Renderiza o corpo do commit a partir dos grupos.
- * - Grupos com >= GROUP_THRESHOLD arquivos → linha de grupo
- * - Grupos com 1 arquivo → linha individual
- * - Agrupa temas distintos em blocos [Tema] quando há mais de um tema
- */
-function renderBody(groups: FileGroup[], diff: string): string {
-    const themes = [...new Set(groups.map((g) => g.theme))];
-    const useBlocks = themes.length > 1;
-
-    // Organiza por tema
-    const byTheme = new Map<string, FileGroup[]>();
-    for (const g of groups) {
-        if (!byTheme.has(g.theme)) byTheme.set(g.theme, []);
-        byTheme.get(g.theme)!.push(g);
-    }
-
-    const lines: string[] = [];
-
-    for (const theme of themes) {
-        if (useBlocks) lines.push(`[${theme}]`);
-
-        for (const group of byTheme.get(theme)!) {
-            if (group.files.length >= GROUP_THRESHOLD) {
-                // Linha de grupo
-                lines.push(`- ${group.label} (${group.files.length} arquivos): ${group.description}`);
-            } else {
-                // Linha individual para cada arquivo do grupo
-                for (const f of group.files) {
-                    const desc = buildSingleFileDescription(f.file, f.status, diff);
-                    lines.push(`- ${f.file}: ${desc}`);
-                }
-            }
-        }
-
-        if (useBlocks) lines.push(""); // linha em branco entre blocos
-    }
-
-    return lines.join("\n").trimEnd();
-}
-
-// ---------------------------------------------------------------------------
-// Descrição para arquivos individuais (mantida do original, simplificada)
-// ---------------------------------------------------------------------------
-
 function inferDescriptionFromFileType(file: string): string | null {
     const lower = file.toLowerCase();
-
     if (lower.endsWith("page.tsx")) return "renderização e carregamento da página";
     if (lower.endsWith(".tsx")) return "componente e comportamento da interface";
     if (lower.endsWith("/types.ts")) return "tipagens e contratos usados no fluxo";
@@ -344,61 +198,110 @@ function inferDescriptionFromFileType(file: string): string | null {
     if (lower.endsWith(".ts")) return "lógica e regras do módulo";
     if (lower.endsWith(".md")) return "documentação do uso e do comportamento esperado";
     if (lower.endsWith(".lock")) return "travamento de versões e resolução de dependências";
-
     return null;
 }
 
-function buildSingleFileDescription(file: string, status: string, diff: string): string {
+function buildSingleFileDescription(file: string, status: string): string {
     const action = pickAction(status);
     const byType = inferDescriptionFromFileType(file);
+    return byType ? `${action} ${byType}` : `${action} implementação relacionada ao módulo`;
+}
 
-    if (byType) return `${action} ${byType}`;
+function groupFiles(parsedFiles: ParsedFile[], diff: string): FileGroup[] {
+    const buckets = new Map<string, ParsedFile[]>();
+    for (const f of parsedFiles) {
+        const key = groupKey(f.file);
+        if (!buckets.has(key)) buckets.set(key, []);
+        buckets.get(key)!.push(f);
+    }
+    const groups: FileGroup[] = [];
+    for (const [key, files] of buckets) {
+        const folder = key.split("/").slice(0, -1).join("/") || "(raiz)";
+        groups.push({ label: folder, files, theme: themeOf(files[0].file), description: describeGroup(files, diff) });
+    }
+    return groups;
+}
 
-    return `${action} implementação relacionada ao módulo`;
+function renderDetailedBody(groups: FileGroup[]): string {
+    const themes = [...new Set(groups.map((g) => g.theme))];
+    const useBlocks = themes.length > 1;
+    const byTheme = new Map<string, FileGroup[]>();
+    for (const g of groups) {
+        if (!byTheme.has(g.theme)) byTheme.set(g.theme, []);
+        byTheme.get(g.theme)!.push(g);
+    }
+    const lines: string[] = [];
+    for (const theme of themes) {
+        if (useBlocks) lines.push(`[${theme}]`);
+        for (const group of byTheme.get(theme)!) {
+            if (group.files.length >= GROUP_THRESHOLD) {
+                lines.push(`- ${group.label} (${group.files.length} arquivos): ${group.description}`);
+            } else {
+                for (const f of group.files) {
+                    lines.push(`- ${f.file}: ${buildSingleFileDescription(f.file, f.status)}`);
+                }
+            }
+        }
+        if (useBlocks) lines.push("");
+    }
+    return lines.join("\n").trimEnd();
 }
 
 // ---------------------------------------------------------------------------
-// Parsing de arquivos e diff (mantido do original)
+// Fallback para modo OVERVIEW (sem API)
+// ---------------------------------------------------------------------------
+
+function renderOverviewBody(parsedFiles: ParsedFile[], diff: string): string {
+    const themes = [...new Set(parsedFiles.map((f) => themeOf(f.file)))];
+
+    if (themes.length <= 1) {
+        // Natureza única — parágrafo simples
+        const theme = themes[0] ?? "Funcionalidade";
+        const action = pickAction(parsedFiles[0]?.status ?? "alterado");
+        return `${action} implementação relacionada a ${theme.toLowerCase()} com base nas alterações staged.`;
+    }
+
+    // Naturezas distintas — bullets por tema
+    return themes
+        .slice(0, 4)
+        .map((theme) => {
+            const filesOfTheme = parsedFiles.filter((f) => themeOf(f.file) === theme);
+            const action = pickAction(filesOfTheme[0]?.status ?? "alterado");
+            return `- ${action} ${theme.toLowerCase()}`;
+        })
+        .join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Parsing
 // ---------------------------------------------------------------------------
 
 function parseFilesSummary(filesSummary: string): ParsedFile[] {
-    return filesSummary
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean)
-        .map((line) => {
-            const match = line.match(/^- (.+) \((.+)\)$/);
-            if (!match) return { file: line.replace(/^- /, ""), status: "alterado" };
-            return { file: match[1], status: match[2] };
-        });
+    return filesSummary.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+        const match = line.match(/^- (.+) \((.+)\)$/);
+        if (!match) return { file: line.replace(/^- /, ""), status: "alterado" };
+        return { file: match[1], status: match[2] };
+    });
 }
 
 function parseDiffByFile(diff: string): Map<string, FileDiffInsight> {
     const insights = new Map<string, FileDiffInsight>();
     const lines = diff.split("\n");
     let currentFile: string | null = null;
-
     for (const line of lines) {
         if (line.startsWith("diff --git ")) {
             const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
             currentFile = match?.[2] ?? null;
-            if (currentFile && !insights.has(currentFile)) {
+            if (currentFile && !insights.has(currentFile))
                 insights.set(currentFile, { additions: 0, deletions: 0, content: "" });
-            }
             continue;
         }
         if (!currentFile) continue;
         const current = insights.get(currentFile);
         if (!current) continue;
-        if (line.startsWith("+") && !line.startsWith("+++")) {
-            current.additions += 1;
-            current.content += `${line.slice(1)}\n`;
-        } else if (line.startsWith("-") && !line.startsWith("---")) {
-            current.deletions += 1;
-            current.content += `${line.slice(1)}\n`;
-        }
+        if (line.startsWith("+") && !line.startsWith("+++")) { current.additions += 1; current.content += `${line.slice(1)}\n`; }
+        else if (line.startsWith("-") && !line.startsWith("---")) { current.deletions += 1; current.content += `${line.slice(1)}\n`; }
     }
-
     return insights;
 }
 
@@ -406,14 +309,15 @@ function parseDiffByFile(diff: string): Map<string, FileDiffInsight> {
 // Fallback público
 // ---------------------------------------------------------------------------
 
-export function buildFallbackCommitSuggestion(diff: string, filesSummary: string): string {
+export function buildFallbackCommitSuggestion(diff: string, filesSummary: string, mode: CommitMode = "detailed"): string {
     const parsedFiles = parseFilesSummary(filesSummary);
     const fileNames = parsedFiles.map(({ file }) => file);
     const kind = detectCommitKind(fileNames, diff);
     const header = `${kind.emoji} ${kind.type}(${kind.scope}): ${truncateTitle(kind.title)}`;
 
-    const groups = groupFiles(parsedFiles, diff);
-    const body = renderBody(groups, diff);
+    const body = mode === "overview"
+        ? renderOverviewBody(parsedFiles, diff)
+        : renderDetailedBody(groupFiles(parsedFiles, diff));
 
     return `${header}\n\n${body}`;
 }
@@ -426,18 +330,19 @@ export async function getCommitSuggestion(
     apiKey: string,
     diff: string,
     filesSummary: string,
-    history: string
+    styleContext: string,
+    mode: CommitMode = "detailed"
 ): Promise<string> {
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        systemInstruction: SYSTEM_INSTRUCTIONS
-    });
+    const systemInstruction = mode === "overview"
+        ? SYSTEM_INSTRUCTIONS_OVERVIEW
+        : SYSTEM_INSTRUCTIONS_DETAILED;
+
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
 
     let diffContent = diff;
     let truncationWarning = "";
-
     if (diff.length > DIFF_CHAR_LIMIT) {
         diffContent = diff.substring(0, DIFF_CHAR_LIMIT);
         truncationWarning = `\n\n⚠️ ATENÇÃO: O diff foi truncado por ser muito extenso.`;
@@ -445,8 +350,7 @@ export async function getCommitSuggestion(
     }
 
     const prompt = `
-## HISTÓRICO DE ESTILO:
-${history || "Sem histórico disponível."}
+${styleContext || "## PERFIL DE ESTILO DO DESENVOLVEDOR\nSem histórico disponível."}
 
 ## ARQUIVOS MODIFICADOS:
 ${filesSummary}
@@ -454,32 +358,18 @@ ${filesSummary}
 ## DIFF DETALHADO:
 ${diffContent}${truncationWarning}
 
-Gere a mensagem de commit agrupando arquivos com o mesmo propósito em linhas de grupo.
-Use blocos temáticos [Interface], [Assets], [Funcionalidade], etc. quando houver grupos de naturezas distintas.`;
+Gere a mensagem de commit seguindo o perfil de estilo e o modo ${mode === "overview" ? "OVERVIEW" : "DETAILED"} conforme as instruções.`;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
             const result = await model.generateContent(prompt);
-            const responseText = result.response.text();
-
-            return responseText
-                .replace(/```[a-z]*\n?/gi, "")
-                .replace(/```/g, "")
-                .trim();
+            return result.response.text().replace(/```[a-z]*\n?/gi, "").replace(/```/g, "").trim();
         } catch (error) {
             const retryable = isRetryableError(error);
             const isLastAttempt = attempt === MAX_RETRIES;
-
-            if (!retryable || isLastAttempt) {
-                throw normalizeGeminiError(error);
-            }
-
+            if (!retryable || isLastAttempt) throw normalizeGeminiError(error);
             const waitMs = attempt * 1_500;
-            console.log(
-                chalk.yellow(
-                    `\n⚠️  Falha temporaria ao consultar o Gemini. Nova tentativa em ${(waitMs / 1000).toFixed(1)}s...`
-                )
-            );
+            console.log(chalk.yellow(`\n⚠️  Falha temporaria. Nova tentativa em ${(waitMs / 1000).toFixed(1)}s...`));
             await sleep(waitMs);
         }
     }

@@ -2,23 +2,24 @@ import chalk from "chalk";
 import prompts from "prompts";
 import {
     buildFallbackCommitSuggestion,
+    CommitMode,
     GeminiServiceError,
     getCommitSuggestion
 } from "../services/gemini.js";
+import { formatProfileForPrompt, getStyleProfile } from "../services/styleProfile.js";
 import { Git } from "../utils/git.js";
 
 export class CommitEngine {
     private apiKey: string;
+    private mode: CommitMode;
     private currentMessage: string = "";
     private isDone: boolean = false;
 
-    constructor(apiKey: string) {
+    constructor(apiKey: string, mode: CommitMode = "detailed") {
         this.apiKey = apiKey;
+        this.mode = mode;
     }
 
-    /**
-     * O ponto de entrada principal que inicia o loop de interação.
-     */
     async run(): Promise<void> {
         const filesSummary = Git.getChangedFilesSummary();
 
@@ -38,15 +39,14 @@ export class CommitEngine {
 
             if (!this.currentMessage) {
                 const { action } = await prompts({
-                    type: 'select',
-                    name: 'action',
-                    message: 'Não foi possível gerar uma sugestão. O que deseja fazer?',
+                    type: "select",
+                    name: "action",
+                    message: "Não foi possível gerar uma sugestão. O que deseja fazer?",
                     choices: [
-                        { title: '🔄 Tentar novamente', value: 'regenerate' },
-                        { title: '❌ Cancelar', value: 'cancel' }
+                        { title: "🔄 Tentar novamente", value: "regenerate" },
+                        { title: "❌ Cancelar", value: "cancel" }
                     ]
                 });
-
                 await this.handleAction(action, diff, filesSummary);
                 continue;
             }
@@ -54,14 +54,14 @@ export class CommitEngine {
             this.showSuggestion();
 
             const { action } = await prompts({
-                type: 'select',
-                name: 'action',
-                message: 'O que deseja fazer?',
+                type: "select",
+                name: "action",
+                message: "O que deseja fazer?",
                 choices: [
-                    { title: '✅ Aceitar e Commitar', value: 'commit' },
-                    { title: '🔄 Gerar nova sugestão', value: 'regenerate' },
-                    { title: '✏️ Editar mensagem', value: 'edit' },
-                    { title: '❌ Cancelar', value: 'cancel' }
+                    { title: "✅ Aceitar e Commitar", value: "commit" },
+                    { title: "🔄 Gerar nova sugestão", value: "regenerate" },
+                    { title: "✏️ Editar mensagem", value: "edit" },
+                    { title: "❌ Cancelar", value: "cancel" }
                 ]
             });
 
@@ -71,27 +71,40 @@ export class CommitEngine {
 
     private displayEnvironmentInfo(filesSummary: string): void {
         const fileCount = filesSummary.split("\n").length;
+        const modeLabel = this.mode === "overview"
+            ? chalk.magenta("overview")
+            : chalk.cyan("detailed");
+
         console.log(chalk.blue(`🚀 Projeto: [${Git.getProjectName()}]`));
-        console.log(chalk.blue(`📂 Arquivos staged: ${fileCount}`));
+        console.log(chalk.blue(`📂 Arquivos staged: ${fileCount}`) + chalk.gray(` · modo: ${modeLabel}`));
         console.log(chalk.gray(filesSummary));
     }
 
     private async generateNewSuggestion(diff: string, filesSummary: string): Promise<void> {
-        console.log(chalk.cyan("🤖 Analisando seu estilo e gerando sugestão..."));
+        const profile = getStyleProfile();
 
-        // Passo 2: Busca o histórico de estilo
-        const history = Git.getRecentCommits(5);
+        if (profile) {
+            const isNew = Git.getLatestCommitHash() !== profile.lastCommitHash;
+            console.log(chalk.cyan(isNew ? "🧠 Atualizando perfil de estilo..." : "🧠 Perfil de estilo carregado do cache."));
+        } else {
+            console.log(chalk.gray("💡 Sem histórico suficiente. Gerando sem perfil de estilo."));
+        }
+
+        console.log(chalk.cyan("🤖 Consultando o Gemini para gerar a mensagem de commit..."));
+
+        const styleContext = profile ? formatProfileForPrompt(profile) : "";
 
         try {
             this.currentMessage = await getCommitSuggestion(
                 this.apiKey,
                 diff,
                 filesSummary,
-                history
+                styleContext,
+                this.mode
             );
         } catch (error) {
             this.displaySuggestionError(error);
-            this.currentMessage = buildFallbackCommitSuggestion(diff, filesSummary);
+            this.currentMessage = buildFallbackCommitSuggestion(diff, filesSummary, this.mode);
             console.log(chalk.yellow("\n🛟 Usando sugestão local de fallback baseada no diff staged."));
         }
     }
@@ -104,19 +117,16 @@ export class CommitEngine {
 
     private async handleAction(action: string, diff: string, filesSummary: string): Promise<void> {
         switch (action) {
-            case 'regenerate':
+            case "regenerate":
                 this.currentMessage = "";
                 break;
-
-            case 'edit':
+            case "edit":
                 await this.handleEdit();
                 break;
-
-            case 'commit':
+            case "commit":
                 await this.executeCommitFlow();
                 break;
-
-            case 'cancel':
+            case "cancel":
             default:
                 console.log(chalk.yellow("\nAté logo! 👋"));
                 this.isDone = true;
@@ -127,26 +137,20 @@ export class CommitEngine {
     private displaySuggestionError(error: unknown): void {
         if (error instanceof GeminiServiceError) {
             console.log(chalk.red(`\n❌ ${error.message}`));
-
-            if (error.retryable) {
-                console.log(chalk.yellow("Você pode tentar gerar novamente sem perder o fluxo atual."));
-            }
-
+            if (error.retryable) console.log(chalk.yellow("Você pode tentar gerar novamente sem perder o fluxo atual."));
             return;
         }
-
         const message = error instanceof Error ? error.message : String(error);
         console.log(chalk.red(`\n❌ Falha inesperada ao gerar sugestão: ${message}`));
     }
 
     private async handleEdit(): Promise<void> {
         const { edited } = await prompts({
-            type: 'text',
-            name: 'edited',
-            message: 'Edite a mensagem de commit:',
+            type: "text",
+            name: "edited",
+            message: "Edite a mensagem de commit:",
             initial: this.currentMessage
         });
-
         if (edited && edited.trim() !== "") {
             this.currentMessage = edited.trim();
         } else {
@@ -159,9 +163,9 @@ export class CommitEngine {
         console.log(chalk.green("\n✅ Commit realizado com sucesso!"));
 
         const { push } = await prompts({
-            type: 'confirm',
-            name: 'push',
-            message: 'Deseja fazer push agora?',
+            type: "confirm",
+            name: "push",
+            message: "Deseja fazer push agora?",
             initial: true
         });
 
