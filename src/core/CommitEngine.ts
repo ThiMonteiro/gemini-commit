@@ -8,6 +8,7 @@ import {
 } from "../services/gemini.js";
 import { formatProfileForPrompt, getStyleProfile } from "../services/styleProfile.js";
 import { Git } from "../utils/git.js";
+import { openEditor } from "../utils/editor.js";
 
 export class CommitEngine {
     private apiKey: string;
@@ -145,16 +146,16 @@ export class CommitEngine {
     }
 
     private async handleEdit(): Promise<void> {
-        const { edited } = await prompts({
-            type: "text",
-            name: "edited",
-            message: "Edite a mensagem de commit:",
-            initial: this.currentMessage
-        });
-        if (edited && edited.trim() !== "") {
-            this.currentMessage = edited.trim();
-        } else {
-            console.log(chalk.yellow("Nenhuma edição feita, mantendo original."));
+        try {
+            const edited = await openEditor(this.currentMessage);
+            if (edited && edited !== "") {
+                this.currentMessage = edited;
+            } else {
+                console.log(chalk.yellow("Mensagem vazia ou não alterada significativamente. Mantendo original."));
+            }
+        } catch (error) {
+            console.error(chalk.red("\n❌ Erro ao abrir o editor:"), error);
+            console.log(chalk.yellow("Mantendo a mensagem original."));
         }
     }
 

@@ -13,7 +13,8 @@ O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Int
 - 🧠 **Perfil de Estilo:** Aprende automaticamente com o seu histórico de commits — vocabulário, escopos e tipos preferidos — e aplica esse estilo nas sugestões.
 - 🗂️ **Agrupamento Inteligente:** Em vez de listar arquivo por arquivo, agrupa mudanças por propósito e exibe blocos temáticos como `[Interface]`, `[Assets]` e `[Config]`.
 - 🔀 **Dois modos de commit:** Escolha entre `--detailed` (agrupado, técnico) ou `--overview` (resumo de valor entregue).
-- 💬 **Revisão Interativa:** O CLI sempre perguntará se você deseja confirmar, editar ou gerar uma nova sugestão antes de acionar o `git commit`.
+- 💬 **Revisão Interativa:** O CLI sempre perguntará se você deseja confirmar, editar ou gerar uma nova sugestão.
+- ✏️ **Editor Externo:** Ao escolher editar, a ferramenta abre seu editor favorito (`nano`, `vim`, `vscode`, etc.) para total liberdade de escrita.
 
 ---
 
