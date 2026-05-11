@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import chalk from "chalk";
+import { env } from "process";
 import { SYSTEM_INSTRUCTIONS_DETAILED, SYSTEM_INSTRUCTIONS_OVERVIEW } from "../constants/prompt.js";
 
 const DIFF_CHAR_LIMIT = 100_000;
@@ -339,7 +340,7 @@ export async function getCommitSuggestion(
         ? SYSTEM_INSTRUCTIONS_OVERVIEW
         : SYSTEM_INSTRUCTIONS_DETAILED;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction });
+    const model = genAI.getGenerativeModel({ model: env.MODEL_GEMINI as string, systemInstruction });
 
     let diffContent = diff;
     let truncationWarning = "";
