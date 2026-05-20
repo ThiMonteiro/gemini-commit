@@ -340,8 +340,7 @@ export async function getCommitSuggestion(
         ? SYSTEM_INSTRUCTIONS_OVERVIEW
         : SYSTEM_INSTRUCTIONS_DETAILED;
 
-    const modelName = env.MODEL_GEMINI || "gemini-2.5-flash";
-    const model = genAI.getGenerativeModel({ model: modelName, systemInstruction });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash", systemInstruction });
 
     let diffContent = diff;
     let truncationWarning = "";
