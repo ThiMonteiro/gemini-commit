@@ -1,6 +1,6 @@
 # 🚀 Gemini Commit (gcommit)
 
-**Automatize suas mensagens de commit usando o poder do Google Gemini 2.5 Flash.**
+**Automatize suas mensagens de commit usando o poder do Google Gemini 3.1 Flash-Lite.**
 
 O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Interface) projetada para analisar as alterações locais no seu repositório Git usando `git diff --staged` e gerar mensagens de commit precisas, padronizadas pelo [Conventional Commits](https://www.conventionalcommits.org/pt-br/v1.0.0/), totalmente em **Português Brasileiro (pt-BR)**.
 
@@ -8,7 +8,7 @@ O `gemini-commit` (ou comando `gcommit`) é uma ferramenta CLI (Command Line Int
 
 ## ✨ Recursos
 
-- 🤖 **Inteligência Artificial:** Utiliza a API rápida e acessível do `gemini-2.5-flash` do Google.
+- 🤖 **Inteligência Artificial:** Utiliza a API rápida e acessível do `gemini-3.1-flash-lite` do Google.
 - 📦 **Padrão Semântico:** Criação de títulos seguindo à risca a especificação dos Conventional Commits (com emojis apropriados).
 - 🧠 **Perfil de Estilo:** Aprende automaticamente com o seu histórico de commits — vocabulário, escopos e tipos preferidos — e aplica esse estilo nas sugestões.
 - 🗂️ **Agrupamento Inteligente:** Em vez de listar arquivo por arquivo, agrupa mudanças por propósito e exibe blocos temáticos como `[Interface]`, `[Assets]` e `[Config]`.
